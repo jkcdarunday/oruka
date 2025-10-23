@@ -1,9 +1,10 @@
 {
-  "name": "Orca",
+  "name": "oruka",
+  "productName": "Oruka",
   "version": "1.0.0",
   "description": "A simple Facebook Messenger desktop app",
   "license": "Apache-2.0",
-  "repository": "jkcdarunday/orca",
+  "repository": "jkcdarunday/oruka",
   "author": {
     "name": "Jan Keith Darunday",
     "email": "github@jkcdarunday.mozmail.com"
