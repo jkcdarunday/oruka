@@ -1,0 +1,47 @@
+name: Build Electron App
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build --if-present
+
+      - name: Package and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            npx electron-builder --linux AppImage --publish always
+          elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+            npx electron-builder --win nsis --publish always
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            npx electron-builder --mac dmg --publish always
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-artifacts
+          path: dist/
