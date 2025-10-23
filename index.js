@@ -26,6 +26,7 @@ app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 
 const hidden = process.argv.includes('--hidden')
+const icon = path.join(app.isPackaged ? app.getAppPath() : __dirname, 'icon.png');
 let exiting = false
 let win, tray;
 app.whenReady().then(() => {
@@ -34,7 +35,7 @@ app.whenReady().then(() => {
     height: 800,
     autoHideMenuBar: true,
     title: 'Messenger',
-    icon: path.join(__dirname, 'icon.png'),
+    icon,
     show: !hidden,
     webPreferences: {
       nodeIntegration: false,
@@ -50,7 +51,7 @@ app.whenReady().then(() => {
   });
 
   // Setup tray icon
-  tray = new Tray('icon.png');
+  tray = new Tray(icon);
   tray.setToolTip('Messenger');
 
   // Tray icon left click toggles hide
