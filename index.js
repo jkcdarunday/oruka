@@ -72,6 +72,16 @@ app.whenReady().then(() => {
   ]);
   tray.setContextMenu(contextMenu);
 
+  // Ctrl+q or Cmd+q to quit
+  win.webContents.on('before-input-event', (event, input) => {
+    const modifier = process.platform === 'darwin' ? input.meta : input.control;
+    if (modifier && input.key.toLowerCase() === 'q') {
+      event.preventDefault();
+      exiting = true;
+      app.quit();
+    }
+  });
+
   // Hide on close
   win.on('close', (e) => {
     if (!exiting) {
