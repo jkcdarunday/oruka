@@ -15,6 +15,14 @@
     "start": "electron .",
     "build": "electron-builder"
   },
+  "build": {
+    "appId": "dev.jkcdarunday.oruka",
+    "icon": "icon.png",
+    "linux": {
+      "target": ["pacman", "AppImage", "deb"],
+      "category": "Chat"
+    }
+  },
   "devDependencies": {
     "electron": "^38.4.0",
     "electron-builder": "^26.0.12"
