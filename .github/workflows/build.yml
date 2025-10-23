@@ -35,18 +35,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build --if-present
 
-      - name: Package and publish
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            npx electron-builder --linux AppImage --publish always
-          elif [ "${{ matrix.os }}" = "windows-latest" ]; then
-            npx electron-builder --win nsis --publish always
-          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
-            npx electron-builder --mac dmg --publish always
-          fi
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
