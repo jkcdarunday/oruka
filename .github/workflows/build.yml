@@ -12,6 +12,8 @@ jobs:
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
 
+    container: electronuserland/builder:wine
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
