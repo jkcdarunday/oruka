@@ -1,0 +1,21 @@
+{
+  "name": "Orca",
+  "version": "1.0.0",
+  "description": "A simple Facebook Messenger desktop app",
+  "license": "Apache-2.0",
+  "repository": "jkcdarunday/orca",
+  "author": {
+    "name": "Jan Keith Darunday",
+    "email": "github@jkcdarunday.mozmail.com"
+  },
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^38.4.0",
+    "electron-builder": "^26.0.12"
+  }
+}
