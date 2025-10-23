@@ -12,6 +12,9 @@ jobs:
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
 
+    permissions:
+      contents: write
+
     container: electronuserland/builder:wine
 
     steps:
