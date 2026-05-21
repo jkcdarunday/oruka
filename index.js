@@ -50,6 +50,49 @@ app.whenReady().then(() => {
     return { action: 'deny' };
   });
 
+  // Provide a stable context menu for right-click actions in remote content.
+  win.webContents.on('context-menu', (_event, params) => {
+    const template = [];
+
+    if (params.linkURL) {
+      template.push({
+        label: 'Open Link in Browser',
+        click: () => shell.openExternal(params.linkURL),
+      });
+      template.push({ type: 'separator' });
+    }
+
+    if (params.isEditable) {
+      template.push(
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      );
+    } else if (params.selectionText && params.selectionText.trim()) {
+      template.push({ role: 'copy' });
+    }
+
+    if (!template.length) {
+      template.push({ role: 'copy' });
+    }
+
+    if (!app.isPackaged) {
+      template.push(
+        { type: 'separator' },
+        {
+          label: 'Inspect Element',
+          click: () => win.webContents.inspectElement(params.x, params.y),
+        },
+      );
+    }
+
+    Menu.buildFromTemplate(template).popup({ window: win });
+  });
+
   // Setup tray icon
   tray = new Tray(icon);
   tray.setToolTip('Messenger');
