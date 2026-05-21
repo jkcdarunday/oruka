@@ -2,13 +2,20 @@ const { app, shell, BrowserWindow, Tray, Menu } = require('electron');
 const path = require('path')
 
 // Allow only a single instance
+let hasPageError = false;
+let recoverIfErrored = () => {};
+
+const showWindow = () => {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  recoverIfErrored('show-window');
+};
+
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => {
-  if (win) {
-    if (win.isMinimized()) win.restore();
-    win.show();
-    win.focus();
-  }
+  showWindow();
 });
 
 // Enable Wayland
@@ -27,6 +34,7 @@ app.commandLine.appendSwitch('enable-zero-copy');
 
 const hidden = process.argv.includes('--hidden')
 const icon = path.join(app.isPackaged ? app.getAppPath() : __dirname, 'icon.png');
+const messengerUrl = 'https://messenger.com';
 let exiting = false
 let win, tray;
 app.whenReady().then(() => {
@@ -42,6 +50,64 @@ app.whenReady().then(() => {
       contextIsolation: true,
       enableBlinkFeatures: 'WebAuthentication,WebAuthn,WebAuthnCable,U2F,Notification,MiddleClickAutoscroll',
     },
+  });
+
+  const backoffBaseMs = 2000;
+  const backoffMaxMs = 60000;
+  let reloadAttempt = 0;
+  let reloadTimer = null;
+
+  const clearReloadTimer = () => {
+    if (!reloadTimer) return;
+    clearTimeout(reloadTimer);
+    reloadTimer = null;
+  };
+
+  const scheduleReload = (reason, options = {}) => {
+    const immediate = options.immediate === true;
+    if (exiting || !win || win.isDestroyed() || reloadTimer) return;
+
+    const delay = immediate ? 0 : Math.min(backoffBaseMs * (2 ** reloadAttempt), backoffMaxMs);
+    if (!immediate) reloadAttempt += 1;
+
+    console.warn(`[oruka] scheduling reload in ${delay}ms: ${reason}`);
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      if (exiting || !win || win.isDestroyed()) return;
+      win.loadURL(messengerUrl).catch((error) => {
+        console.error('[oruka] reload failed', error);
+      });
+    }, delay);
+  };
+
+  recoverIfErrored = (reason) => {
+    if (!hasPageError) return;
+    scheduleReload(`recover-on-show:${reason}`, { immediate: true });
+  };
+
+  win.webContents.on('did-finish-load', () => {
+    hasPageError = false;
+    reloadAttempt = 0;
+    clearReloadTimer();
+  });
+
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) return;
+    hasPageError = true;
+    console.error(`[oruka] load failed (${errorCode}) ${errorDescription}: ${validatedURL}`);
+    scheduleReload(`did-fail-load:${errorCode}`);
+  });
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    hasPageError = true;
+    console.error(`[oruka] renderer process gone: ${details.reason}`);
+    scheduleReload(`render-process-gone:${details.reason}`);
+  });
+
+  win.webContents.on('unresponsive', () => {
+    hasPageError = true;
+    console.error('[oruka] renderer became unresponsive');
+    scheduleReload('unresponsive');
   });
 
   // Open links in external browser
@@ -100,15 +166,12 @@ app.whenReady().then(() => {
   // Tray icon left click toggles hide
   tray.on('click', () => {
     if (win.isVisible()) win.hide();
-    else {
-      win.show();
-      win.focus();
-    }
+    else showWindow();
   });
 
   // Tray icon right click shows context menu
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show', click: () => win.show() },
+    { label: 'Show', click: () => showWindow() },
     { label: 'Hide', click: () => win.hide() },
     { type: 'separator' },
     { label: 'Quit', click: () => { exiting = true; app.quit() }},
@@ -133,5 +196,5 @@ app.whenReady().then(() => {
     }
   });
 
-  win.loadURL('https://messenger.com');
+  win.loadURL(messengerUrl);
 });
