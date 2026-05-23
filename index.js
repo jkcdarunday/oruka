@@ -165,8 +165,8 @@ app.whenReady().then(() => {
 
   // Tray icon left click toggles hide
   tray.on('click', () => {
-    if (win.isVisible()) win.hide();
-    else showWindow();
+    if (!win.isVisible() || !win.isFocused()) showWindow();
+    else win.hide();
   });
 
   // Tray icon right click shows context menu
