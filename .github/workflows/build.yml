@@ -35,6 +35,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build --if-present
 
+      - name: Upload build to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.pacman
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
