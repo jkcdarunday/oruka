@@ -1,4 +1,4 @@
-const { app, shell, BrowserWindow, Tray, Menu } = require('electron');
+const { app, shell, BrowserWindow, Tray, Menu, session } = require('electron');
 const path = require('path')
 
 // Allow only a single instance
@@ -35,9 +35,45 @@ app.commandLine.appendSwitch('enable-zero-copy');
 const hidden = process.argv.includes('--hidden')
 const icon = path.join(app.isPackaged ? app.getAppPath() : __dirname, 'icon.png');
 const messengerUrl = 'https://messenger.com';
+
+const isInternalUrl = (url) => {
+  if (typeof url !== 'string') return false;
+  if (url.startsWith('about:blank') || url.startsWith('about:srcdoc') || url.startsWith('blob:')) {
+    return true;
+  }
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === 'messenger.com' ||
+      host.endsWith('.messenger.com') ||
+      host === 'facebook.com' ||
+      host.endsWith('.facebook.com') ||
+      host === 'fbcdn.net' ||
+      host.endsWith('.fbcdn.net')
+    );
+  } catch {
+    return false;
+  }
+};
+
 let exiting = false
 let win, tray;
 app.whenReady().then(() => {
+  // Grant media permissions for Messenger calls (mic, camera, notifications)
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    const url = webContents.getURL();
+    if (isInternalUrl(url) && ['media', 'mediaKeySystem', 'notifications'].includes(permission)) {
+      return callback(true);
+    }
+    callback(false);
+  });
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    const url = webContents ? webContents.getURL() : '';
+    return isInternalUrl(url) && ['media', 'mediaKeySystem', 'notifications'].includes(permission);
+  });
+
   win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -93,6 +129,7 @@ app.whenReady().then(() => {
 
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || errorCode === -3) return;
+    if (isInternalUrl(validatedURL)) return;
     hasPageError = true;
     console.error(`[oruka] load failed (${errorCode}) ${errorDescription}: ${validatedURL}`);
     scheduleReload(`did-fail-load:${errorCode}`);
@@ -110,10 +147,35 @@ app.whenReady().then(() => {
     scheduleReload('unresponsive');
   });
 
-  // Open links in external browser
+  // Handle new windows (such as Messenger call popups) and external links
   win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isInternalUrl(url)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          autoHideMenuBar: true,
+          icon,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+          },
+        },
+      };
+    }
+
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // Ensure child windows also open external links in system browser
+  win.webContents.on('did-create-window', (childWindow) => {
+    childWindow.webContents.setWindowOpenHandler(({ url }) => {
+      if (isInternalUrl(url)) {
+        return { action: 'allow' };
+      }
+      shell.openExternal(url);
+      return { action: 'deny' };
+    });
   });
 
   // Provide a stable context menu for right-click actions in remote content.
