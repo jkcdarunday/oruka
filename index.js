@@ -67,6 +67,65 @@ const isInternalUrl = (url) => {
   }
 };
 
+// Service permissions and popup routing have different boundaries: Facebook
+// hosts Messenger, but its posts, profiles, and reels belong in the browser.
+const isAppWindowUrl = (url) => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'about:') {
+      return parsed.pathname === 'blank' || parsed.pathname === 'srcdoc';
+    }
+    // Blob call windows identify their creator's origin, not a call route.
+    if (parsed.protocol === 'blob:') return isInternalUrl(parsed.pathname);
+    if (!['https:', 'http:'].includes(parsed.protocol)) return false;
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'messenger.com' || host.endsWith('.messenger.com')) return true;
+    if (host === 'facebook.com' || host.endsWith('.facebook.com')) {
+      return /^\/(?:messages|messenger|call|groupcall|videocall|videochat|rtc|login|checkpoint|two_step_verification|dialog\/oauth)(?:\/|\.php(?:\/|$)|$)/.test(parsed.pathname);
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+const configureWindowLinks = (window) => {
+  window.webContents.setWindowOpenHandler(({ url, disposition }) => {
+    // Like Caprine, treat ordinary new-tab links as browser links. Calls use
+    // separate windows, often bootstrapped with about:blank or a blob URL.
+    const isTab = disposition === 'foreground-tab' || disposition === 'background-tab';
+    if (!isTab && isAppWindowUrl(url)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          autoHideMenuBar: true,
+          icon,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+          },
+        },
+      };
+    }
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  const handleNavigation = (event, url) => {
+    if (isAppWindowUrl(url)) return;
+    event.preventDefault();
+    shell.openExternal(url);
+  };
+  window.webContents.on('will-navigate', handleNavigation);
+  window.webContents.on('will-redirect', (event, url, _isInPlace, isMainFrame) => {
+    if (isMainFrame) handleNavigation(event, url);
+  });
+  // Call windows can open further windows or start blank before navigating.
+  window.webContents.on('did-create-window', (childWindow) => {
+    configureWindowLinks(childWindow);
+  });
+};
+
 let exiting = false
 let win, tray;
 app.whenReady().then(() => {
@@ -230,36 +289,8 @@ app.whenReady().then(() => {
     scheduleReload('unresponsive');
   });
 
-  // Handle new windows (such as Messenger call popups) and external links
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isInternalUrl(url)) {
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          autoHideMenuBar: true,
-          icon,
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-          },
-        },
-      };
-    }
-
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
-
-  // Ensure child windows also open external links in system browser
-  win.webContents.on('did-create-window', (childWindow) => {
-    childWindow.webContents.setWindowOpenHandler(({ url }) => {
-      if (isInternalUrl(url)) {
-        return { action: 'allow' };
-      }
-      shell.openExternal(url);
-      return { action: 'deny' };
-    });
-  });
+  // Keep Messenger calls/authentication in-app and open other links externally.
+  configureWindowLinks(win);
 
   // Provide a stable context menu for right-click actions in remote content.
   win.webContents.on('context-menu', (_event, params) => {
