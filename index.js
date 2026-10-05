@@ -44,7 +44,7 @@ app.commandLine.appendSwitch('enable-zero-copy');
 
 const hidden = process.argv.includes('--hidden')
 const icon = path.join(app.isPackaged ? app.getAppPath() : __dirname, 'icon.png');
-const messengerUrl = 'https://messenger.com';
+const messengerUrl = 'https://www.messenger.com/';
 
 const isInternalUrl = (url) => {
   if (typeof url !== 'string') return false;
@@ -102,6 +102,58 @@ app.whenReady().then(() => {
   const backoffMaxMs = 60000;
   let reloadAttempt = 0;
   let reloadTimer = null;
+  let errorPageTimer = null;
+  let errorPageUrl = '';
+
+  const clearErrorPageTimer = () => {
+    if (errorPageTimer === null) return;
+    clearTimeout(errorPageTimer);
+    errorPageTimer = null;
+  };
+
+  const showLoadError = (errorCode, errorDescription) => {
+    clearErrorPageTimer();
+    // Defer navigation until Chromium has finished processing the failed load.
+    errorPageTimer = setTimeout(() => {
+      errorPageTimer = null;
+      if (exiting || !hasPageError || !win || win.isDestroyed()) return;
+      const details = `${errorDescription} (${errorCode})`.replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      })[character]);
+      const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+  <title>Messenger — Connection problem</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
+    main { max-width: 420px; padding: 32px; text-align: center; }
+    h1 { font-size: 26px; }
+    p { line-height: 1.6; }
+    .button { display: inline-block; margin: 12px 0; padding: 12px 24px; border-radius: 8px; background: #0866ff; color: white; text-decoration: none; font-weight: 600; }
+    .button:focus-visible { outline: 3px solid CanvasText; outline-offset: 4px; }
+    small { display: block; margin-top: 16px; opacity: .7; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Couldn't connect to Messenger</h1>
+    <p>Check your internet connection or DNS settings, then try again.</p>
+    <a class="button" href="${messengerUrl}">Try again</a>
+    <p>Oruka will also retry automatically.</p>
+    <small>${details}</small>
+  </main>
+</body>
+</html>`;
+      errorPageUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+      win.loadURL(errorPageUrl).catch((error) => {
+        console.error('[oruka] could not display connection error', error);
+      });
+    }, 0);
+  };
 
   const clearReloadTimer = () => {
     if (!reloadTimer) return;
@@ -111,7 +163,11 @@ app.whenReady().then(() => {
 
   const scheduleReload = (reason, options = {}) => {
     const immediate = options.immediate === true;
-    if (exiting || !win || win.isDestroyed() || reloadTimer) return;
+    if (exiting || !win || win.isDestroyed()) return;
+    if (reloadTimer) {
+      if (!immediate) return;
+      clearReloadTimer();
+    }
 
     const delay = immediate ? 0 : Math.min(backoffBaseMs * (2 ** reloadAttempt), backoffMaxMs);
     if (!immediate) reloadAttempt += 1;
@@ -132,17 +188,34 @@ app.whenReady().then(() => {
   };
 
   win.webContents.on('did-finish-load', () => {
-    hasPageError = false;
+    // Loading the fallback page must not count as a successful Messenger load.
+    if (hasPageError || win.webContents.getURL() === errorPageUrl) return;
     reloadAttempt = 0;
     clearReloadTimer();
   });
 
+  win.webContents.on('did-navigate', (_event, url, httpResponseCode) => {
+    if (!isInternalUrl(url) || httpResponseCode < 200 || httpResponseCode >= 400) return;
+    hasPageError = false;
+    reloadAttempt = 0;
+    clearReloadTimer();
+    clearErrorPageTimer();
+  });
+
+  win.webContents.on('will-navigate', (event, url) => {
+    if (win.webContents.getURL() !== errorPageUrl || url !== messengerUrl) return;
+    event.preventDefault();
+    scheduleReload('retry-button', { immediate: true });
+  });
+
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || errorCode === -3) return;
-    if (isInternalUrl(validatedURL)) return;
+    // Ignore our fallback page; failures of Messenger itself need recovery.
+    if (validatedURL === errorPageUrl) return;
     hasPageError = true;
     console.error(`[oruka] load failed (${errorCode}) ${errorDescription}: ${validatedURL}`);
     scheduleReload(`did-fail-load:${errorCode}`);
+    showLoadError(errorCode, errorDescription);
   });
 
   win.webContents.on('render-process-gone', (_event, details) => {
@@ -330,5 +403,12 @@ app.whenReady().then(() => {
     }
   });
 
-  win.loadURL(messengerUrl);
+  win.on('closed', () => {
+    clearReloadTimer();
+    clearErrorPageTimer();
+  });
+
+  win.loadURL(messengerUrl).catch((error) => {
+    console.error('[oruka] initial load failed', error);
+  });
 });
