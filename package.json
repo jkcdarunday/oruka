@@ -1,7 +1,7 @@
 {
   "name": "oruka",
   "productName": "Oruka",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "A simple Meta Messenger desktop app",
   "license": "Apache-2.0",
   "repository": "jkcdarunday/oruka",
@@ -13,7 +13,9 @@
   "main": "index.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac"
   },
   "build": {
     "appId": "dev.jkcdarunday.oruka",
@@ -21,10 +23,38 @@
     "linux": {
       "target": ["pacman", "AppImage", "deb"],
       "category": "Chat"
+    },
+    "mac": {
+      "category": "public.app-category.social-networking",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Oruka requires access to your camera for video calls in Messenger.",
+        "NSMicrophoneUsageDescription": "Oruka requires access to your microphone for audio and video calls in Messenger."
+      }
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     }
   },
   "devDependencies": {
-    "electron": "^44.4.3",
-    "electron-builder": "^26.15.3"
+    "electron": "^44.5.1",
+    "electron-builder": "^26.8.1"
   }
 }

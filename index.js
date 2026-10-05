@@ -1,4 +1,4 @@
-const { app, shell, BrowserWindow, Tray, Menu, session } = require('electron');
+const { app, shell, BrowserWindow, Tray, Menu, session, nativeImage } = require('electron');
 const path = require('path')
 
 // Allow only a single instance
@@ -16,6 +16,16 @@ const showWindow = () => {
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => {
   showWindow();
+});
+
+// Restore window when clicking Dock icon on macOS
+app.on('activate', () => {
+  showWindow();
+});
+
+// Ensure window is allowed to close during app quit on all platforms
+app.on('before-quit', () => {
+  exiting = true;
 });
 
 // Enable Wayland
@@ -221,8 +231,70 @@ app.whenReady().then(() => {
     Menu.buildFromTemplate(template).popup({ window: win });
   });
 
+  // Setup macOS application menu with native roles and shortcuts
+  if (process.platform === 'darwin') {
+    const template = [
+      {
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' },
+        ],
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { role: 'selectAll' },
+        ],
+      },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          ...(!app.isPackaged ? [{ role: 'toggleDevTools' }] : []),
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+        ],
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { role: 'minimize' },
+          { role: 'zoom' },
+          { role: 'close' },
+          { type: 'separator' },
+          { role: 'front' },
+        ],
+      },
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  }
+
   // Setup tray icon
-  tray = new Tray(icon);
+  const trayIcon = process.platform === 'darwin'
+    ? nativeImage.createFromPath(icon).resize({ width: 18, height: 18 })
+    : icon;
+  tray = new Tray(trayIcon);
   tray.setToolTip('Messenger');
 
   // Tray icon left click toggles hide
